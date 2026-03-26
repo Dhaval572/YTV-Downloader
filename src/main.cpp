@@ -514,18 +514,6 @@ namespace UI
         ImGui::Begin("##root", nullptr, root_flags);
 
         float W = ImGui::GetContentRegionAvail().x;
-
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.75f, 0.20f, 1.f));
-        ImGui::SetWindowFontScale(1.30f);
-        ImGui::Text("  yt-dlp  Downloader");
-        ImGui::SetWindowFontScale(1.00f);
-        ImGui::PopStyleColor();
-
-        ImGui::SameLine(W - 180 + ImGui::GetStyle().WindowPadding.x);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.42f, 0.42f, 0.48f, 1.f));
-        ImGui::Text("yt-dlp + ffmpeg");
-        ImGui::PopStyleColor();
-
         ImGui::Separator();
         ImGui::Spacing();
 
@@ -850,7 +838,7 @@ namespace UI
 int main()
 {
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(860, 520, "Download");
+    InitWindow(860, 520, "Youtube Video Downloader");
     SetWindowMinSize(540, 360);
     SetTargetFPS(60);
 
