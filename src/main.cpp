@@ -1,4 +1,3 @@
-#include <rlImGui.h>
 #include <imgui.h>
 #include <string>
 #include <string_view>
@@ -39,6 +38,12 @@ namespace State
 
 namespace Shell
 {
+#ifdef _WIN32
+    constexpr bool kIsWindows = true;
+#else
+    constexpr bool kIsWindows = false;
+#endif
+
     void SetStatus(string_view msg, bool error = false)
     {
         State::status_message = msg;
@@ -59,9 +64,19 @@ namespace Shell
         return result;
     }
 
+    string NullDevice()
+    {
+        return kIsWindows ? "NUL" : "/dev/null";
+    }
+
     bool Exists(string_view cmd)
     {
-        return system(format("which {} > /dev/null 2>&1", cmd).c_str()) == 0;
+        if (kIsWindows)
+        {
+            return system(format("where {} > {} 2>&1", cmd, NullDevice()).c_str()) == 0;
+        }
+
+        return system(format("which {} > {} 2>&1", cmd, NullDevice()).c_str()) == 0;
     }
 
     string GetLinuxPackageManager()
@@ -75,6 +90,37 @@ namespace Shell
 
     void InstallWithPackageManager(string_view pkg_name)
     {
+        if (kIsWindows)
+        {
+            string pkg_id = (pkg_name == "ffmpeg") ? "Gyan.FFmpeg" : "yt-dlp.yt-dlp";
+
+            if (Exists("winget"))
+            {
+                string cmd = format(
+                    "winget install --id {} -e --silent --accept-package-agreements --accept-source-agreements",
+                    pkg_id
+                );
+                system(format("{} > {} 2>&1", cmd, NullDevice()).c_str());
+                return;
+            }
+
+            if (Exists("choco"))
+            {
+                string cmd = format("choco install -y {}", pkg_name);
+                system(format("{} > {} 2>&1", cmd, NullDevice()).c_str());
+                return;
+            }
+
+            if (Exists("scoop"))
+            {
+                string cmd = format("scoop install {}", pkg_name);
+                system(format("{} > {} 2>&1", cmd, NullDevice()).c_str());
+                return;
+            }
+
+            return;
+        }
+
         string pm = GetLinuxPackageManager();
         string install_cmd;
 
@@ -85,7 +131,19 @@ namespace Shell
 
         if (!install_cmd.empty())
         {
-            system(format("{} > /dev/null 2>&1", install_cmd).c_str());
+            system(format("{} > {} 2>&1", install_cmd, NullDevice()).c_str());
+        }
+    }
+
+    void CancelYtDlp()
+    {
+        if (kIsWindows)
+        {
+            system("taskkill /F /IM yt-dlp.exe > NUL 2>&1");
+        }
+        else
+        {
+            system("pkill -f yt-dlp > /dev/null 2>&1");
         }
     }
 }
@@ -137,7 +195,11 @@ namespace Installer
 
             if (!Shell::Exists("yt-dlp") && package_to_install == "yt-dlp")
             {
+#ifdef _WIN32
+                system("py -m pip install --user -U yt-dlp > NUL 2>&1");
+#else
                 system("pip3 install --user yt-dlp > /dev/null 2>&1");
+#endif
             }
 
             State::is_installing = false;
@@ -145,6 +207,12 @@ namespace Installer
 
             if (!Shell::Exists(package_to_install))
             {
+#ifdef _WIN32
+                string hint = (package_to_install == "ffmpeg")
+                    ? "winget install Gyan.FFmpeg"
+                    : "winget install yt-dlp.yt-dlp";
+                Shell::SetStatus(format("Failed to install {}. Please install manually:\n  {}", package_to_install, hint), true);
+#else
                 Shell::SetStatus
                 (
                     format
@@ -156,6 +224,7 @@ namespace Installer
                         package_to_install, package_to_install, package_to_install, package_to_install
                     ), true
                 );
+#endif
             }
             else
             {
@@ -221,31 +290,31 @@ namespace Ytdlp
 {
     string BuildSelector(const t_FormatOption& fmt, int height)
     {
-        if (fmt.audio_only) return "bestaudio";
+        if (fmt.audio_only) return "bestaudio/best";
         string ext(fmt.ext);
 
         if (height == 0)
         {
-            if (ext == "mp4") 
+            if (ext == "mp4")
             {
-                return "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best";
-            } 
+                return "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b/best";
+            }
             if (ext == "webm")
             {
-                return "bestvideo[ext=webm]+bestaudio[ext=webm]/best[ext=webm]/best";
-            } 
-            return "bestvideo+bestaudio/best";
+                return "bv*[ext=webm]+ba[ext=webm]/bv*+ba/b[ext=webm]/b/best";
+            }
+            return "bv*+ba/b/best";
         }
 
         string hs = to_string(height);
 
         if (ext == "mp4")
         {
-            return format("bv*[height<={}][ext=mp4]+ba[ext=m4a]/b[height<={}][ext=mp4]/best", hs, hs);
-        }   
+            return format("bv*[height<={}][ext=mp4]+ba[ext=m4a]/bv*[height<={}]+ba/b[height<={}][ext=mp4]/b[height<={}]/best", hs, hs, hs, hs);
+        }
         if (ext == "webm")
         {
-            return format("bv*[height<={}][ext=webm]+ba[ext=webm]/b[height<={}][ext=webm]/best", hs, hs);
+            return format("bv*[height<={}][ext=webm]+ba[ext=webm]/bv*[height<={}]+ba/b[height<={}][ext=webm]/b[height<={}]/best", hs, hs, hs, hs);
         }
 
         return format("bv*[height<={}]+ba/b[height<={}]/best", hs, hs);
@@ -285,8 +354,11 @@ namespace Ytdlp
             fs::path tmp_path = fs::temp_directory_path() / "yt_size_tmp.txt";
             string cmd = format
             (
-                "yt-dlp -f \"{}\" --print \"%(filesize,filesize_approx)s\" --no-download {} > {} 2>/dev/null",
-                BuildSelector(fmt, height), Shell::Escape(url), tmp_path.string()
+                "yt-dlp -f \"{}\" --print \"%(filesize,filesize_approx)s\" --no-download {} > {} 2>{}",
+                BuildSelector(fmt, height),
+                Shell::Escape(url),
+                Shell::Escape(tmp_path.string()),
+                Shell::NullDevice()
             );
 
             system(cmd.c_str());
@@ -327,8 +399,6 @@ namespace Ytdlp
 
         thread([url = string(url), fmt, height, path = string(path)]()
         {
-            string cmd = BuildCommand(url, fmt, height, path);
-
             if (!Shell::Exists("yt-dlp"))
             {
                 Shell::SetStatus("Error: yt-dlp not found.", true);
@@ -336,95 +406,23 @@ namespace Ytdlp
                 return;
             }
 
-            fs::path script_path = fs::temp_directory_path() / "yt_download.sh";
+            string cmd = BuildCommand(url, fmt, height, path);
+            Shell::SetStatus("Downloading…");
 
-            {
-                ofstream script(script_path);
-                if (script.is_open())
-                {
-                    script << "#!/bin/bash\n";
-                    script << "set -e\n";
-                    script << "echo \"Starting download...\"\n";
-                    script << cmd << "\n";
-                    script << "EXIT_CODE=$?\n";
-                    script << "if [ $EXIT_CODE -eq 0 ]; then\n";
-                    script << "    echo \"✓ Download completed successfully!\"\n";
-                    script << "else\n";
-                    script << "    echo \"✗ Download failed with exit code: $EXIT_CODE\"\n";
-                    script << "fi\n";
-                    script << "echo \"\"\n";
-                    script << "echo \"Press Enter to close this window...\"\n";
-                    script << "read\n";
-                    script.close();
-                }
-                else
-                {
-                    Shell::SetStatus("Failed to create download script.", true);
-                    State::is_downloading = false;
-                    return;
-                }
-            }
-
-            fs::permissions
-            (
-                script_path,
-                fs::perms::owner_exec | 
-                fs::perms::group_exec | 
-                fs::perms::others_exec, fs::perm_options::add
-            );
-
-            string terminal_cmd;
-            if (Shell::Exists("gnome-terminal"))
-            {
-                terminal_cmd = format("gnome-terminal -- bash -c \"{}\"", script_path.string());
-            }
-            else if (Shell::Exists("xterm"))
-            {
-                terminal_cmd = format("xterm -e bash -c \"{}\"", script_path.string());
-            }
-            else if (Shell::Exists("konsole"))
-            {
-                terminal_cmd = format("konsole -e bash -c \"{}\"", script_path.string());
-            }
-            else
-            {
-                terminal_cmd = format("{} &", cmd);
-            }
-
-            system(terminal_cmd.c_str());
-
-            bool done = false;
-            int wait_count = 0;
-
-            while (!State::should_cancel && wait_count < 600)
-            {
-                Shell::SetStatus("Downloading…");
-                this_thread::sleep_for(chrono::milliseconds(500));
-                wait_count++;
-
-                if (system("pgrep -x yt-dlp > /dev/null 2>&1") != 0)
-                {
-                    done = true;
-                    break;
-                }
-            }
+            int exit_code = system(cmd.c_str());
 
             if (State::should_cancel)
             {
-                system("pkill -f yt-dlp");
                 Shell::SetStatus("Download canceled.", true);
             }
-            else if (done)
+            else if (exit_code == 0)
             {
                 Shell::SetStatus("Download completed successfully!");
             }
             else
             {
-                Shell::SetStatus("Download timed out or something went wrong.", true);
+                Shell::SetStatus("Download failed.", true);
             }
-
-            error_code ec;
-            fs::remove(script_path, ec);
 
             State::is_downloading = false;
         }).detach();
@@ -700,8 +698,8 @@ namespace UI
                     }
 
                     string fp(sel);
-                    size_t sl = fp.find_last_of('/');
-                    string dir = (sl != string::npos) ? fp.substr(0, sl) : ".";
+                    fs::path selected_path(fp);
+                    string dir = selected_path.has_parent_path() ? selected_path.parent_path().string() : ".";
 
                     State::pending_url = url_buf;
                     State::pending_format = cur_fmt.ext;
@@ -827,6 +825,7 @@ namespace UI
             if (ImGui::Button("  Cancel Download  "))
             {
                 State::should_cancel = true;
+                Shell::CancelYtDlp();
                 Shell::SetStatus("Canceling download…", true);
             }
 
