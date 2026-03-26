@@ -9,7 +9,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
-#include <system_error>
+#include <system_error> // IWYU pragma: keep
 #include "tinyfiledialogs.h"
 #include "ImGuiCustomTheme.h"
 using namespace std;
@@ -560,52 +560,38 @@ namespace UI
             return arr;
         }();
 
-        // Calculate the same Y position for both groups
-        float group_y = ImGui::GetCursorPosY();
+        // Labels row — both on the exact same line
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.72f, 0.84f, 1.0f, 1.f));
+        ImGui::Text("Format");
+        ImGui::SameLine(col_w + 10.0f + ImGui::GetStyle().WindowPadding.x);
+        ImGui::Text("Resolution");
+        ImGui::PopStyleColor();
 
-        // Format Group
-        ImGui::BeginGroup();
+        // Combos row
+        ImGui::SetNextItemWidth(col_w);
+        if (ImGui::Combo("##format", &fmt_idx, fmt_items.data(), static_cast<int>(fmt_items.size())))
         {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.72f, 0.84f, 1.0f, 1.f));
-            ImGui::Text("Format");
-            ImGui::PopStyleColor();
-            ImGui::SetNextItemWidth(col_w);
-            if (ImGui::Combo("##format", &fmt_idx, fmt_items.data(), static_cast<int>(fmt_items.size())))
+            State::probed_size.clear();
+        }
+
+        ImGui::SameLine(0, 10);
+        ImGui::SetNextItemWidth(col_w);
+
+        if (audio_only)
+        {
+            ImGui::BeginDisabled();
+            int dummy = 0;
+            const array<const char*, 1> na = {"N/A  (audio only)"};
+            ImGui::Combo("##res_na", &dummy, na.data(), static_cast<int>(na.size()));
+            ImGui::EndDisabled();
+        }
+        else
+        {
+            if (ImGui::Combo("##res", &res_idx, res_items.data(), static_cast<int>(res_items.size())))
             {
                 State::probed_size.clear();
             }
         }
-        ImGui::EndGroup();
-
-        // Move to the same Y position for resolution group
-        ImGui::SameLine(0, 10);
-        ImGui::SetCursorPosY(group_y);
-
-        // Resolution Group
-        ImGui::BeginGroup();
-        {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.72f, 0.84f, 1.0f, 1.f));
-            ImGui::Text("Resolution");
-            ImGui::PopStyleColor();
-            ImGui::SetNextItemWidth(col_w);
-
-            if (audio_only)
-            {
-                ImGui::BeginDisabled();
-                int dummy = 0;
-                const array<const char*, 1> na = {"N/A  (audio only)"};
-                ImGui::Combo("##res_na", &dummy, na.data(), static_cast<int>(na.size()));
-                ImGui::EndDisabled();
-            }
-            else
-            {
-                if (ImGui::Combo("##res", &res_idx, res_items.data(), static_cast<int>(res_items.size())))
-                {
-                    State::probed_size.clear();
-                }
-            }
-        }
-        ImGui::EndGroup();
 
         ImGui::Spacing();
         ImGui::Separator();
