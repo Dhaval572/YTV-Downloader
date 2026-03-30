@@ -19,30 +19,52 @@ if (NOT raylib_FOUND)
     FetchContent_MakeAvailable(raylib)
 endif()
 
-# Collect source files only (.cpp)
+# Collect source files
 file(GLOB PROJECT_SRC_CPP "src/*.cpp")
 
-# rlImGui and ImGui sources
+# rlImGui, ImGui, and tinyfiledialogs sources
 set(RLIMGUI_SRC rlImGui/rlImGui.cpp)
-set(IMGUI_SRC imgui/imgui.cpp imgui/imgui_draw.cpp imgui/imgui_tables.cpp imgui/imgui_widgets.cpp imgui/imgui_demo.cpp)
+set(IMGUI_SRC 
+    imgui/imgui.cpp 
+    imgui/imgui_draw.cpp 
+    imgui/imgui_tables.cpp 
+    imgui/imgui_widgets.cpp 
+    imgui/imgui_demo.cpp
+)
 set(TINYFILEDIALOGS tinyfiledialogs/tinyfiledialogs.c)
 
-# Copy assets to the build directory
-if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
-    file(COPY ${CMAKE_SOURCE_DIR}/assets DESTINATION ${CMAKE_BINARY_DIR})
-endif()
+# Create executable (fixed name to match install target)
+add_executable(ytv_downloader 
+    ${PROJECT_SRC_CPP} 
+    ${RLIMGUI_SRC} 
+    ${IMGUI_SRC} 
+    ${TINYFILEDIALOGS}
+)
 
-# Create executable
-add_executable(main ${PROJECT_SRC_CPP} ${RLIMGUI_SRC} ${IMGUI_SRC} ${TINYFILEDIALOGS})
-
-# Add include directories — this is what lets you include .hpp/.h files
-target_include_directories(main PRIVATE
+# Add include directories
+target_include_directories(ytv_downloader PRIVATE
     ${raylib_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
     ${CMAKE_SOURCE_DIR}/rlImGui
     ${CMAKE_SOURCE_DIR}/tinyfiledialogs
-    ${CMAKE_SOURCE_DIR}/src  # <-- This is what includes your .h/.hpp headers!
+    ${CMAKE_SOURCE_DIR}/src
 )
 
 # Link libraries
-target_link_libraries(main raylib)
+target_link_libraries(ytv_downloader raylib)
+
+# Copy assets to build directory (works on all platforms)
+add_custom_command(TARGET ytv_downloader POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/assets
+    ${CMAKE_BINARY_DIR}/assets
+    COMMENT "Copying assets to build directory"
+)
+
+# Installation (works on all platforms)
+install(TARGETS ytv_downloader DESTINATION bin)
+
+# Only install assets on Linux for AppImage
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    install(DIRECTORY assets/ DESTINATION share/ytv_downloader/assets)
+endif()
