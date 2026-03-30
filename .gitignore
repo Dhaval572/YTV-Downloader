@@ -2,3 +2,7 @@
 .vs
 .cache
 build/
+AppDir/
+*.AppImage
+appimagetool-x86_64.AppImage
+appimagetool-extracted/
