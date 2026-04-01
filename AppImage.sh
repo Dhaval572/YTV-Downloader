@@ -2,86 +2,44 @@
 
 set -e
 
+# Build and install to AppDir
 mkdir -p build && cd build
-cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..
-ninja -j8
+cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr ..
+ninja
+DESTDIR=$(pwd)/AppDir ninja install
 cd ..
 
-mkdir -p AppDir/usr/{bin,lib,share/ytv_downloader/assets,share/fonts}
-mkdir -p AppDir/etc/fonts
-
-cp build/ytv_downloader AppDir/usr/bin/
-cp -r assets/* AppDir/usr/share/ytv_downloader/assets/
-
-if [ -d "assets/Font" ]; then
-    cp -r assets/Font/*.ttf AppDir/usr/share/fonts/ || true
-fi
-
-if [ -f "/etc/fonts/fonts.conf" ]; then
-    cp /etc/fonts/fonts.conf AppDir/etc/fonts/
-fi
-
-# Copy libraries recursively
-echo "Copying dependencies..."
-ldd build/ytv_downloader | grep "=> /" | awk '{print $3}' | while read lib; do
-    if [ -f "$lib" ]; then
-        cp -n "$lib" AppDir/usr/lib/ 2>/dev/null || true
-        # Also copy dependencies of each library
-        ldd "$lib" 2>/dev/null | grep "=> /" | awk '{print $3}' | while read dep; do
-            if [ -f "$dep" ]; then
-                cp -n "$dep" AppDir/usr/lib/ 2>/dev/null || true
-            fi
-        done
-    fi
-done
-
-# Create AppRun with library path
-cat > AppDir/AppRun << 'EOF'
+# Create AppRun script with library path
+cat > build/AppDir/AppRun << 'EOF'
 #!/bin/bash
-HERE="$(dirname "$(readlink -f "$0")")"
-
-export APPDIR="$HERE"
-export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
-export FONTCONFIG_PATH="$HERE/etc/fonts"
-export FONTCONFIG_FILE="$HERE/etc/fonts/fonts.conf"
-export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
-
-exec "$HERE/usr/bin/ytv_downloader" "$@"
+SELF=$(readlink -f "$0")
+HERE=${SELF%/*}
+export LD_LIBRARY_PATH="${HERE}/usr/lib/:${LD_LIBRARY_PATH}"
+exec "${HERE}/usr/bin/ytv_downloader" "$@"
 EOF
+chmod +x build/AppDir/AppRun
 
-chmod +x AppDir/AppRun
-
-cat > AppDir/ytv_downloader.desktop << EOF
+# Create desktop file
+cat > build/AppDir/ytv_downloader.desktop << 'EOF'
 [Desktop Entry]
-Name=Youtube Video Downloader
-Comment=Download videos from YouTube
+Name=YTV Downloader
+Comment=YouTube Video Downloader
 Exec=ytv_downloader
 Icon=ytv_downloader
-Terminal=false
 Type=Application
-Categories=AudioVideo;Network;
+Categories=AudioVideo;
 EOF
 
-if command -v convert &> /dev/null; then
-    convert -size 128x128 xc:gray -fill white -gravity center -pointsize 20 -annotate 0 "YTV" AppDir/ytv_downloader.png
-else
-    touch AppDir/ytv_downloader.png
-fi
+# Add icon
+cp assets/Icon/ytv_downloader.png build/AppDir/ytv_downloader.png
 
-if [ ! -f appimagetool-x86_64.AppImage ]; then
-    wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
-    chmod +x appimagetool-x86_64.AppImage
-fi
+# Bundle raylib library
+mkdir -p build/AppDir/usr/lib
+cp /usr/lib64/libraylib.so.550 build/AppDir/usr/lib/
 
-echo "Extracting appimagetool..."
-./appimagetool-x86_64.AppImage --appimage-extract
-mv squashfs-root appimagetool-extracted
+# Create AppImage
+ARCH=x86_64 appimagetool build/AppDir YTV-Downloader-x86_64.AppImage
 
-echo "Creating AppImage..."
-./appimagetool-extracted/AppRun AppDir
+chmod +x YTV-Downloader-x86_64.AppImage
 
-rm -rf appimagetool-extracted
-
-mv *.AppImage Youtube_Video_Downloader-Linux-x86_64.AppImage 2>/dev/null || true
-
-echo "Created: $(ls *.AppImage 2>/dev/null)"
+echo "AppImage created: YTV-Downloader-x86_64.AppImage"
