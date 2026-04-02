@@ -97,7 +97,8 @@ namespace Shell
 
             if (Exists("winget"))
             {
-                string cmd = format(
+                string cmd = format
+                (
                     "winget install --id {} -e --silent --accept-package-agreements --accept-source-agreements",
                     pkg_id
                 );
@@ -835,7 +836,7 @@ namespace UI
             ImGui::TextColored
             (
                 ImVec4(0.28f, 0.95f, 0.50f, 1.f),
-                "Download in progress – check the terminal window."
+                "Download in progress - check the terminal window."
             );
 
             ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.60f, 0.13f, 0.13f, 1.f));
