@@ -37,8 +37,13 @@ cp assets/Icon/ytv_downloader.png build/AppDir/ytv_downloader.png
 mkdir -p build/AppDir/usr/lib
 cp /usr/lib64/libraylib.so.550 build/AppDir/usr/lib/
 
-# Create AppImage
-ARCH=x86_64 appimagetool build/AppDir YTV-Downloader-x86_64.AppImage
+# Download runtime file (once, not every time)
+if [ ! -f "runtime-x86_64" ]; then
+    wget https://github.com/AppImage/AppImageKit/releases/download/continuous/runtime-x86_64
+fi
+
+# Create AppImage with runtime file
+ARCH=x86_64 appimagetool --runtime-file runtime-x86_64 build/AppDir YTV-Downloader-x86_64.AppImage
 
 chmod +x YTV-Downloader-x86_64.AppImage
 

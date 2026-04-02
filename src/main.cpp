@@ -30,6 +30,7 @@ namespace State
     string pending_url;
     string pending_format;
     string pending_path;
+    string pending_filename;
     int pending_res = 1080;
 
     atomic<bool> is_probing{false};
@@ -320,17 +321,38 @@ namespace Ytdlp
         return format("bv*[height<={}]+ba/b[height<={}]/best", hs, hs);
     }
 
-    string BuildCommand(string_view url, const t_FormatOption& fmt, int height, string_view out_path)
+    string BuildCommand(string_view url, const t_FormatOption& fmt, int height, string_view out_path, string_view custom_filename = "")
     {
-        string out = format(" -P {}", Shell::Escape(out_path));
+        string out_template;
+
+        if (!custom_filename.empty())
+        {
+            // Convert string_view to string for processing
+            string filename(custom_filename);
+
+            // remove invalid characters
+            for (char& c : filename)
+            {
+                if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' ||
+                    c == '"' || c == '<' || c == '>' || c == '|')
+                {
+                    c = '_';
+                }
+            }
+            out_template = format(" -o \"{}/{}.{}\"", out_path, filename, fmt.ext);
+        }
+        else
+        {
+            out_template = format(" -o \"{}/%(title)s.%(ext)s\"", out_path);
+        }
 
         if (fmt.audio_only)
         {
             return format
             (
                 "yt-dlp -x --audio-format {} --audio-quality 0{} {}",
-                fmt.ext, 
-                out, 
+                fmt.ext,
+                out_template,
                 Shell::Escape(url)
             );
         }
@@ -338,7 +360,7 @@ namespace Ytdlp
         return format
         (
             "yt-dlp -f \"{}\" --merge-output-format {}{} {}",
-            BuildSelector(fmt, height), fmt.ext, out, Shell::Escape(url)
+            BuildSelector(fmt, height), fmt.ext, out_template, Shell::Escape(url)
         );
     }
 
@@ -391,13 +413,13 @@ namespace Ytdlp
         }).detach();
     }
 
-    void Download(string_view url, const t_FormatOption& fmt, int height, string_view path)
+    void Download(string_view url, const t_FormatOption& fmt, int height, string_view path, string_view custom_filename = "")
     {
         State::is_downloading = true;
         State::should_cancel = false;
         Shell::SetStatus("Preparing download…");
 
-        thread([url = string(url), fmt, height, path = string(path)]()
+        thread([url = string(url), fmt, height, path = string(path), custom_filename = string(custom_filename)]()
         {
             if (!Shell::Exists("yt-dlp"))
             {
@@ -406,7 +428,7 @@ namespace Ytdlp
                 return;
             }
 
-            string cmd = BuildCommand(url, fmt, height, path);
+            string cmd = BuildCommand(url, fmt, height, path, custom_filename);
             Shell::SetStatus("Downloading…");
 
             int exit_code = system(cmd.c_str());
@@ -596,7 +618,7 @@ namespace UI
         if (size_check_disabled)
         {
             ImGui::BeginDisabled();
-        } 
+        }
         if (ImGui::Button("  Check File Size  "))
         {
             Ytdlp::ProbeSize(url_buf, cur_fmt, res_px);
@@ -604,7 +626,7 @@ namespace UI
         if (size_check_disabled)
         {
             ImGui::EndDisabled();
-        } 
+        }
 
         ImGui::PopStyleColor(3);
         ImGui::SameLine(0, 14);
@@ -657,13 +679,13 @@ namespace UI
             {
                 const char* sel = tinyfd_saveFileDialog
                 (
-                    "Save file as", 
-                    cur_fmt.ext.data(), 
-                    0, 
-                    nullptr, 
+                    "Save file as",
+                    cur_fmt.ext.data(),
+                    0,
+                    nullptr,
                     nullptr
                 );
-                
+
                 if (sel)
                 {
                     if (!audio_only && !Shell::Exists("ffmpeg") && !State::is_installing)
@@ -676,7 +698,7 @@ namespace UI
                     string dir = selected_path.has_parent_path() ? selected_path.parent_path().string() : ".";
 
                     State::pending_url = url_buf;
-                    State::pending_format = cur_fmt.ext;
+                    State::pending_format = string(cur_fmt.ext);
                     State::pending_path = dir;
                     State::pending_res = res_px;
                     State::show_confirmation = true;
@@ -701,11 +723,13 @@ namespace UI
             );
         }
 
-        if 
+        static string custom_filename;  // Persistent across frames
+
+        if
         (
             ImGui::BeginPopupModal
             (
-                "Confirm Download", 
+                "Confirm Download",
                 nullptr,
                 ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove
             )
@@ -738,20 +762,41 @@ namespace UI
             ImGui::Separator();
             ImGui::Spacing();
 
+            // Add filename input
+            ImGui::Text("Filename (without extension):");
+
+            array<char, 256> filename_buf{};
+            strcpy(filename_buf.data(), custom_filename.c_str());
+
+            ImGui::SetNextItemWidth(300);
+            if (ImGui::InputText("##filename", filename_buf.data(), filename_buf.size()))
+            {
+                custom_filename = filename_buf.data();
+            }
+
+            ImGui::TextDisabled("Leave empty to use video title");
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
             ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.13f, 0.58f, 0.24f, 1.f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.18f, 0.74f, 0.32f, 1.f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.09f, 0.42f, 0.17f, 1.f));
 
             if (ImGui::Button("  Start Download  ", ImVec2(160, 0)))
             {
+                State::pending_filename = custom_filename;
                 Ytdlp::Download
                 (
-                    State::pending_url, 
-                    kFormats[fmt_idx], 
-                    State::pending_res, 
-                    State::pending_path
+                    State::pending_url,
+                    kFormats[fmt_idx],
+                    State::pending_res,
+                    State::pending_path,
+                    State::pending_filename
                 );
                 State::show_confirmation = false;
+                custom_filename.clear();  // Reset for next download
                 ImGui::CloseCurrentPopup();
             }
 
@@ -761,6 +806,7 @@ namespace UI
             if (ImGui::Button("  Cancel  ", ImVec2(100, 0)))
             {
                 State::show_confirmation = false;
+                custom_filename.clear();
                 Shell::SetStatus("Download canceled.", true);
                 ImGui::CloseCurrentPopup();
             }
