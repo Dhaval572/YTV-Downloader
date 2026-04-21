@@ -14,9 +14,7 @@ A clean, modern desktop app for downloading YouTube videos and audio.
 
 ## Build
 
-```bash
-mkdir -p build; cd build; cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..; ninja -j8
-```
+The commands below use CMake’s recommended “out-of-source” workflow and `cmake --build` (so you don’t have to remember `ninja`/`make` flags).
 
 ### macOS (build + run)
 
@@ -38,7 +36,7 @@ brew install cmake ninja
 
 ```bash
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
+cmake --build build
 ```
 
 4) Run:
@@ -62,8 +60,50 @@ brew install llvm
 export CC="$(brew --prefix llvm)/bin/clang"
 export CXX="$(brew --prefix llvm)/bin/clang++"
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
+cmake --build build
 ./build/ytv_downloader
+```
+
+### Linux (build + run)
+
+Install prerequisites (example for Ubuntu/Debian):
+
+```bash
+sudo apt update
+sudo apt install -y cmake ninja-build build-essential
+```
+
+Configure + build:
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
+
+Run:
+
+```bash
+./build/ytv_downloader
+```
+
+### Windows (build + run)
+
+You can build with either Visual Studio (recommended) or Ninja.
+
+Option A) Visual Studio generator (multi-config):
+
+```powershell
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Release
+.\build\Release\ytv_downloader.exe
+```
+
+Option B) Ninja generator (single-config):
+
+```powershell
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+.\build\ytv_downloader.exe
 ```
 
 For Windows, the build produces an executable (`.exe`).  
