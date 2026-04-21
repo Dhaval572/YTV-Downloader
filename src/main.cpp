@@ -45,6 +45,18 @@ namespace Shell
     constexpr bool kIsWindows = false;
 #endif
 
+#ifdef __APPLE__
+    constexpr bool kIsMac = true;
+#else
+    constexpr bool kIsMac = false;
+#endif
+
+#ifdef __linux__
+    constexpr bool kIsLinux = true;
+#else
+    constexpr bool kIsLinux = false;
+#endif
+
     void SetStatus(string_view msg, bool error = false)
     {
         State::status_message = msg;
@@ -120,6 +132,30 @@ namespace Shell
                 return;
             }
 
+            return;
+        }
+
+        if (kIsMac)
+        {
+            if (Exists("brew"))
+            {
+                string cmd = format("brew install {}", pkg_name);
+                system(format("{} > {} 2>&1", cmd, NullDevice()).c_str());
+                return;
+            }
+
+            if (Exists("port"))
+            {
+                string cmd = format("sudo port install {}", pkg_name);
+                system(format("{} > {} 2>&1", cmd, NullDevice()).c_str());
+                return;
+            }
+
+            return;
+        }
+
+        if (!kIsLinux)
+        {
             return;
         }
 
@@ -214,6 +250,17 @@ namespace Installer
                     ? "winget install Gyan.FFmpeg"
                     : "winget install yt-dlp.yt-dlp";
                 Shell::SetStatus(format("Failed to install {}. Please install manually:\n  {}", package_to_install, hint), true);
+#elif defined(__APPLE__)
+                Shell::SetStatus
+                (
+                    format
+                    (
+                        "Failed to install {}. Please install manually:\n"
+                        "  Homebrew: brew install {}\n"
+                        "  MacPorts: sudo port install {}",
+                        package_to_install, package_to_install, package_to_install
+                    ), true
+                );
 #else
                 Shell::SetStatus
                 (
