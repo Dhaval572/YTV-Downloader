@@ -16,6 +16,12 @@ A clean, modern desktop app for downloading YouTube videos and audio.
 
 The commands below use CMake’s recommended “out-of-source” workflow and `cmake --build` (so you don’t have to remember `ninja`/`make` flags).
 
+### Quick build (Ninja, macOS/Linux)
+
+```bash
+mkdir -p build; cd build; cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..; ninja
+```
+
 ### macOS (build + run)
 
 This project requires CMake `>= 3.27` and a C++23-capable Clang (Xcode 15+ recommended).
